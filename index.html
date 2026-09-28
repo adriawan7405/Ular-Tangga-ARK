@@ -1,0 +1,1479 @@
+
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ular Tangga ARK</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Fredoka & Quicksand for playful Ghibli UI -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+    <!-- Three.js for 3D Dice canvas rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        fredoka: ['Fredoka', 'sans-serif'],
+                        quicksand: ['Quicksand', 'sans-serif'],
+                    },
+                    colors: {
+                        ghibli: {
+                            sky: '#82c0e5',
+                            grass: '#5c9446',
+                            meadow: '#a3d977',
+                            wood: '#8c5a3c',
+                            cream: '#fdf6e2',
+                            cloud: '#f8fafc',
+                            accent: '#ff7b54',
+                            night: '#233044'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Quicksand', sans-serif;
+            background: linear-gradient(135deg, #74ebd5 0%, #9ace60 100%);
+            touch-action: manipulation;
+            user-select: none;
+            overflow-x: hidden;
+        }
+
+        /* 16:9 Aspect Ratio Container enforce */
+        .game-aspect-ratio {
+            width: 100%;
+            max-width: 1280px;
+            aspect-ratio: 16 / 9;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+            background: linear-gradient(to bottom, #7fc8f8, #a8e6cf);
+        }
+
+        @media (max-aspect-ratio: 16/9) {
+            .game-aspect-ratio {
+                height: 94vh;
+                width: auto;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .game-aspect-ratio {
+                aspect-ratio: auto;
+                height: auto;
+                min-height: 100vh;
+            }
+        }
+
+        /* Canvas styling */
+        #boardCanvas {
+            border-radius: 1rem;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.15);
+            background-color: #fcf8eb;
+        }
+
+        /* Custom Scrollbar for Event Log */
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.3);
+            border-radius: 10px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #5c9446;
+            border-radius: 10px;
+        }
+
+        /* Floating particles CSS */
+        .leaf-particle {
+            position: absolute;
+            pointer-events: none;
+            animation: floatLeaf 8s linear infinite;
+        }
+
+        @keyframes floatLeaf {
+            0% { transform: translateY(-10vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 0.8; }
+            90% { opacity: 0.8; }
+            100% { transform: translateY(105vh) rotate(360deg); opacity: 0; }
+        }
+
+        /* Pulse glow for current player active card */
+        .active-turn-card {
+            border: 3px solid #ff7b54;
+            animation: pulseGlow 1.5s infinite alternate;
+        }
+
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 5px rgba(255, 123, 84, 0.4); }
+            100% { box-shadow: 0 0 18px rgba(255, 123, 84, 0.9); }
+        }
+
+        /* Custom 3D Dice Modal backdrop */
+        .dice-overlay {
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-2 sm:p-4 text-slate-800">
+
+    <!-- Floating Leaves / Soot Sprites Background Overlay -->
+    <div id="leavesContainer" class="fixed inset-0 pointer-events-none overflow-hidden z-0"></div>
+
+    <!-- MAIN GAME CONTAINER (16:9 Ratio) -->
+    <div class="game-aspect-ratio relative z-10 rounded-3xl overflow-hidden border-4 border-amber-900/30 flex flex-col justify-between bg-cover bg-center">
+        
+        <!-- HEADER TOP BAR -->
+        <header class="bg-amber-900/80 backdrop-blur-md text-amber-50 px-4 py-2.5 flex items-center justify-between shadow-md z-20">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full bg-amber-200 flex items-center justify-center text-amber-900 text-xl font-bold shadow-inner">
+                    <i class="fa-solid font-fredoka">🐾</i>
+                </div>
+                <div>
+                    <h1 class="font-fredoka text-lg sm:text-2xl text-amber-200 leading-none drop-shadow">Ular Tangga Ghibli</h1>
+                    <p class="text-xs text-amber-100/80 font-quicksand font-semibold hidden sm:block">Petualangan Hutan Ajaib 10x10</p>
+                </div>
+            </div>
+
+            <!-- Top Action Controls -->
+            <div class="flex items-center space-x-2">
+                <button id="btnSound" onclick="toggleSound()" class="px-3 py-1.5 rounded-full bg-amber-700/80 hover:bg-amber-600 text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 border border-amber-500/30">
+                    <i id="soundIcon" class="fa-solid fa-volume-high"></i>
+                    <span class="hidden md:inline">Musik</span>
+                </button>
+                <button onclick="openRulesModal()" class="px-3 py-1.5 rounded-full bg-emerald-700/80 hover:bg-emerald-600 text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 border border-emerald-500/30">
+                    <i class="fa-solid fa-circle-question"></i>
+                    <span class="hidden md:inline">Aturan</span>
+                </button>
+                <button onclick="resetGamePrompt()" class="px-3 py-1.5 rounded-full bg-rose-700/80 hover:bg-rose-600 text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 border border-rose-500/30">
+                    <i class="fa-solid fa-rotate-right"></i>
+                    <span class="hidden sm:inline">Ulang</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- MIDDLE CONTENT: BOARD (Left) & DASHBOARD (Right) -->
+        <div class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-3 p-3 overflow-hidden relative">
+            
+            <!-- LEFT CONTAINER: CANVAS BOARD (10x10) -->
+            <div class="md:col-span-8 lg:col-span-8 h-full flex items-center justify-center relative min-h-0">
+                <div class="relative h-full aspect-square max-h-full max-w-full flex items-center justify-center p-1">
+                    <canvas id="boardCanvas" class="w-full h-full object-contain cursor-pointer"></canvas>
+                    
+                    <!-- Canvas Floating Banner overlay for Turn status -->
+                    <div id="statusBanner" class="absolute top-3 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-1.5 rounded-full shadow-lg border border-amber-800/20 text-xs sm:text-sm font-bold font-fredoka text-amber-900 pointer-events-none transition-all duration-300 transform scale-100 flex items-center gap-2">
+                        <span id="statusDot" class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span id="statusText">Giliran Pemain 1</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT CONTAINER: PLAYERS & 3D DICE PANEL -->
+            <div class="md:col-span-4 lg:col-span-4 h-full flex flex-col justify-between space-y-2 bg-white/70 backdrop-blur-md rounded-2xl p-3 sm:p-4 border border-white/60 shadow-lg overflow-y-auto custom-scroll">
+                
+                <!-- Game Mode Switcher / Setup Header -->
+                <div class="bg-amber-100/80 p-2.5 rounded-xl border border-amber-300/60 flex items-center justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-amber-800 uppercase tracking-wider block">Mode Permainan</span>
+                        <span id="currentModeLabel" class="font-fredoka text-sm text-amber-950 font-semibold">2 Pemain Lokal (Totoro vs Tanpa Muka)</span>
+                    </div>
+                    <button onclick="openSetupModal()" class="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-2.5 py-1 rounded-lg transition shadow-sm">
+                        Ganti
+                    </button>
+                </div>
+
+                <!-- Players Status List -->
+                <div class="space-y-2 my-1">
+                    <p class="text-xs font-bold text-slate-600 uppercase tracking-wider px-1">Pemain & Posisi</p>
+                    
+                    <!-- Player Cards generated dynamically -->
+                    <div id="playersList" class="space-y-2">
+                        <!-- JS injected cards -->
+                    </div>
+                </div>
+
+                <!-- Interactive 3D Dice Trigger & Action Area -->
+                <div class="bg-emerald-900/10 rounded-2xl p-3 border border-emerald-600/20 flex flex-col items-center justify-center text-center space-y-2 relative overflow-hidden">
+                    <div class="flex items-center justify-around w-full px-2">
+                        <!-- Mini Dice Display Target -->
+                        <div class="flex flex-col items-center">
+                            <span class="text-xs text-slate-600 font-bold mb-1">Angka Dadu</span>
+                            <div id="diceResultBox" class="w-14 h-14 bg-white rounded-2xl shadow-md border-2 border-emerald-500 flex items-center justify-center font-fredoka text-3xl text-emerald-800 transition-transform">
+                                <i class="fa-solid fa-dice text-2xl text-emerald-600"></i>
+                            </div>
+                        </div>
+
+                        <!-- Roll Action Button -->
+                        <div class="flex-1 ml-4">
+                            <button id="btnRollDice" onclick="triggerDiceRoll()" class="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-500 via-green-600 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-fredoka text-lg sm:text-xl rounded-2xl shadow-lg hover:shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2 border-b-4 border-emerald-800">
+                                <i class="fa-solid fa-dice-d6 text-yellow-300 animate-bounce"></i>
+                                <span>LEMPAR DADU</span>
+                            </button>
+                        </div>
+                    </div>
+                    <p id="rollHint" class="text-xs font-semibold text-emerald-800/90 italic">Klik tombol untuk melempar dadu 3D!</p>
+                </div>
+
+                <!-- Log Activity Box -->
+                <div class="flex-1 min-h-[90px] max-h-[130px] bg-slate-900/80 backdrop-blur rounded-xl p-2.5 text-xs text-slate-200 flex flex-col border border-slate-700/50">
+                    <div class="flex items-center justify-between pb-1 border-b border-slate-700/80 mb-1">
+                        <span class="font-bold text-amber-300 text-[11px] uppercase tracking-wide"><i class="fa-solid fa-scroll mr-1"></i> Log Catatan</span>
+                        <span class="text-[10px] text-slate-400">Hutan Ghibli</span>
+                    </div>
+                    <div id="gameLog" class="flex-1 overflow-y-auto space-y-1 custom-scroll pr-1 font-mono text-[11px] leading-relaxed">
+                        <p class="text-emerald-400">✨ Selamat datang di Ular Tangga Ghibli!</p>
+                        <p class="text-slate-300">Siapkan strategi dan nikmati keajaibannya.</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- 3D DICE ROLLING OVERLAY MODAL -->
+    <div id="dice3dModal" class="fixed inset-0 z-50 flex items-center justify-center dice-overlay bg-slate-900/60 opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="bg-gradient-to-b from-amber-50 to-amber-100/90 p-6 rounded-3xl border-4 border-amber-500/80 shadow-2xl flex flex-col items-center justify-center max-w-sm w-11/12 transform scale-90 transition-transform duration-300" id="dice3dBox">
+            <h3 class="font-fredoka text-xl text-amber-900 mb-1">Dadu 3D Berputar...</h3>
+            <p id="dice3dSub" class="text-xs text-amber-700 font-semibold mb-3">Melempar ke takdir hutan...</p>
+            
+            <!-- Three.js Canvas Container for 3D Dice -->
+            <div id="dice3dContainer" class="w-48 h-48 relative flex items-center justify-center my-2">
+                <!-- Three.js renders here -->
+            </div>
+
+            <div id="diceResultBadge" class="opacity-0 transition-opacity duration-300 mt-2 bg-emerald-600 text-white font-fredoka px-6 py-1.5 rounded-full text-lg shadow-lg">
+                Angka: <span id="dice3dNumber" class="text-2xl font-bold text-yellow-300">?</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME SETUP / PLAYER SELECT MODAL -->
+    <div id="setupModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="bg-amber-50 p-6 rounded-3xl border-4 border-amber-600 shadow-2xl max-w-md w-11/12 text-slate-800">
+            <div class="flex items-center justify-between pb-3 border-b border-amber-200 mb-4">
+                <h2 class="font-fredoka text-2xl text-amber-900 flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-amber-600"></i> Pengaturan Game
+                </h2>
+                <button onclick="closeSetupModal()" class="text-slate-400 hover:text-slate-700 text-xl font-bold">✕</button>
+            </div>
+
+            <!-- Mode Selection -->
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wide text-amber-800 mb-2">Pilih Mode Permainan</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button type="button" onclick="setSelectMode('ai')" id="btnModeAI" class="p-3 rounded-2xl border-2 border-emerald-500 bg-emerald-100/80 font-fredoka text-emerald-900 text-sm flex flex-col items-center gap-1 shadow-sm">
+                            <span class="text-2xl">🤖</span>
+                            <span>vs Bot AI</span>
+                        </button>
+                        <button type="button" onclick="setSelectMode('pvp')" id="btnModePVP" class="p-3 rounded-2xl border-2 border-slate-300 bg-white font-fredoka text-slate-700 text-sm flex flex-col items-center gap-1 shadow-sm">
+                            <span class="text-2xl">👥</span>
+                            <span>2 Pemain Lokal</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Number of Players (If PVP selected) -->
+                <div id="pvpCountSection" class="hidden">
+                    <label class="block text-xs font-bold uppercase tracking-wide text-amber-800 mb-1">Jumlah Pemain</label>
+                    <select id="selectPlayerCount" onchange="renderCharacterPickers()" class="w-full p-2.5 rounded-xl border-2 border-amber-300 bg-white font-semibold text-sm">
+                        <option value="2" selected>2 Pemain</option>
+                        <option value="3">3 Pemain</option>
+                        <option value="4">4 Pemain</option>
+                    </select>
+                </div>
+
+                <!-- Character Choices -->
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wide text-amber-800 mb-2">Karakter Pemain</label>
+                    <div id="characterPickerList" class="space-y-2">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+
+                <div class="pt-3">
+                    <button onclick="applySetupAndRestart()" class="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white font-fredoka text-lg rounded-2xl shadow-lg transition">
+                        Mulai Permainan Baru
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RULES MODAL -->
+    <div id="rulesModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="bg-amber-50 p-6 rounded-3xl border-4 border-amber-600 shadow-2xl max-w-md w-11/12 text-slate-800 font-quicksand">
+            <div class="flex items-center justify-between pb-2 border-b border-amber-200 mb-3">
+                <h2 class="font-fredoka text-2xl text-amber-900 flex items-center gap-2">
+                    <i class="fa-solid fa-scroll text-amber-600"></i> Aturan Ular Tangga
+                </h2>
+                <button onclick="closeRulesModal()" class="text-slate-400 hover:text-slate-700 text-xl font-bold">✕</button>
+            </div>
+            <div class="space-y-3 text-sm text-slate-700 max-h-80 overflow-y-auto custom-scroll pr-1">
+                <div class="flex items-start gap-2">
+                    <span class="text-emerald-600 text-lg">🌱</span>
+                    <p>Papan berukuran <strong>10x10 (100 petak)</strong>. Semua pemain mulai dari luar papan dan menuju petak 100.</p>
+                </div>
+                <div class="flex items-start gap-2">
+                    <span class="text-emerald-600 text-lg">🎋</span>
+                    <p><strong>Pohon Tangga Ajaib:</strong> Jika berhenti di kaki tangga, kamu akan memanjat naik ke atas!</p>
+                </div>
+                <div class="flex items-start gap-2">
+                    <span class="text-rose-600 text-lg">🐉</span>
+                    <p><strong>Naga/Ular Roh Hutan:</strong> Jika hinggap di kepala naga/ular, kamu akan meluncur turun ke ekornya.</p>
+                </div>
+                <div class="flex items-start gap-2">
+                    <span class="text-amber-600 text-lg">🎲</span>
+                    <p>Dadu 3D diundi secara acak (1-6). Angka 6 memberikan giliran melempar dadu ekstra sekali lagi!</p>
+                </div>
+                <div class="flex items-start gap-2">
+                    <span class="text-purple-600 text-lg">🏆</span>
+                    <p>Pemain pertama yang mendarat tepat di <strong>Petak 100</strong> menjadi Pemenang Hutan Ghibli!</p>
+                </div>
+            </div>
+            <div class="mt-4 pt-2 border-t border-amber-200">
+                <button onclick="closeRulesModal()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-fredoka rounded-xl shadow transition">
+                    Mengerti & Lanjutkan
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WINNER CELEBRATION MODAL -->
+    <div id="winnerModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-md opacity-0 pointer-events-none transition-opacity duration-500">
+        <div class="bg-gradient-to-b from-amber-100 via-amber-50 to-emerald-100 p-8 rounded-3xl border-4 border-yellow-400 shadow-2xl max-w-sm w-11/12 text-center transform scale-90 transition-transform duration-500 relative overflow-hidden">
+            <div class="text-6xl my-2 animate-bounce" id="winAvatar">🌾</div>
+            <h2 class="font-fredoka text-3xl text-amber-900 mb-1">Selamat!</h2>
+            <p id="winPlayerName" class="font-fredoka text-2xl text-emerald-700 mb-2">Pemain Totoro</p>
+            <p class="text-sm font-semibold text-slate-600 mb-6">Telah berhasil mencapai Puncak Petak 100 Hutan Ajaib Ghibli!</p>
+            
+            <button onclick="restartGame()" class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-600 hover:to-emerald-700 text-white font-fredoka text-xl rounded-2xl shadow-xl transform active:scale-95 transition">
+                <i class="fa-solid fa-play mr-2"></i> Main Lagi
+            </button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT GAME LOGIC -->
+    <script>
+        // Sound synthesis & audio state
+        let soundEnabled = true;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    audioCtx = new AudioContext();
+                }
+            }
+        }
+
+        // Web Audio API Sound Effects Generator
+        function playSound(type) {
+            if (!soundEnabled) return;
+            initAudio();
+            if (!audioCtx) return;
+
+            try {
+                const now = audioCtx.currentTime;
+                if (type === 'roll') {
+                    for (let i = 0; i < 5; i++) {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(120 + Math.random() * 150, now + i * 0.08);
+                        gain.gain.setValueAtTime(0.15, now + i * 0.08);
+                        gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.08 + 0.07);
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start(now + i * 0.08);
+                        osc.stop(now + i * 0.08 + 0.07);
+                    }
+                } else if (type === 'step') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.exponentialRampToValueAtTime(700, now + 0.08);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'ladder') {
+                    const notes = [300, 400, 500, 600, 800];
+                    notes.forEach((freq, idx) => {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+                        gain.gain.setValueAtTime(0.2, now + idx * 0.08);
+                        gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.08 + 0.2);
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start(now + idx * 0.08);
+                        osc.stop(now + idx * 0.08 + 0.2);
+                    });
+                } else if (type === 'snake') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(600, now);
+                    osc.frequency.exponentialRampToValueAtTime(180, now + 0.4);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                } else if (type === 'win') {
+                    const fanfares = [523.25, 659.25, 783.99, 1046.50];
+                    fanfares.forEach((freq, idx) => {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.15);
+                        gain.gain.setValueAtTime(0.3, now + idx * 0.15);
+                        gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.15 + 0.4);
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start(now + idx * 0.15);
+                        osc.stop(now + idx * 0.15 + 0.4);
+                    });
+                }
+            } catch (e) {
+                console.log("Audio error", e);
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('soundIcon');
+            const btn = document.getElementById('btnSound');
+            if (soundEnabled) {
+                icon.className = 'fa-solid fa-volume-high';
+                btn.classList.remove('opacity-60');
+                logEvent("🎵 Suara diaktifkan.");
+            } else {
+                icon.className = 'fa-solid fa-volume-xmark';
+                btn.classList.add('opacity-60');
+                logEvent("🔇 Suara dimatikan.");
+            }
+        }
+
+        // Available Ghibli Inspired Avatars
+        const AVATARS = {
+            totoro: { name: 'Totoro', icon: '🍃', color: '#4a7c59', bg: '#d8e2dc', border: '#386641' },
+            kaonashi: { name: 'Tanpa Muka', icon: '🎭', color: '#2b2d42', bg: '#e0e1dd', border: '#1d3557' },
+            calcifer: { name: 'Calcifer', icon: '🔥', color: '#e63946', bg: '#ffe5ec', border: '#d90429' },
+            kodama: { name: 'Kodama', icon: '🌱', color: '#80ed99', bg: '#e8f5e9', border: '#38b000' }
+        };
+
+        const LADDERS = {
+            4: 14,
+            9: 31,
+            20: 38,
+            28: 84,
+            40: 59,
+            51: 67,
+            63: 81,
+            71: 91,
+            80: 99
+        };
+
+        const SNAKES = {
+            17: 7,
+            54: 34,
+            62: 19,
+            64: 60,
+            87: 24,
+            93: 73,
+            95: 75,
+            98: 79
+        };
+
+        let gameMode = 'pvp'; // Default: Human vs Human
+        let players = [];
+        let currentPlayerIndex = 0;
+        let isRolling = false;
+        let isMoving = false;
+
+        let selectedMode = 'pvp';
+        let selectedPlayerCount = 2;
+        let selectedAvatars = ['totoro', 'kaonashi', 'calcifer', 'kodama'];
+
+        let canvas, ctx;
+
+        function initCanvas() {
+            canvas = document.getElementById('boardCanvas');
+            ctx = canvas.getContext('2d');
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+        }
+
+        function resizeCanvas() {
+            if (!canvas) return;
+            const container = canvas.parentElement;
+            const size = Math.min(container.clientWidth, container.clientHeight);
+            canvas.width = size * window.devicePixelRatio || size;
+            canvas.height = size * window.devicePixelRatio || size;
+            drawBoard();
+        }
+
+        function getTileCoordinates(tileNum) {
+            const index = tileNum - 1;
+            const row = Math.floor(index / 10);
+            let col = index % 10;
+            if (row % 2 === 1) {
+                col = 9 - col;
+            }
+            return { row, col };
+        }
+
+        function getTilePixelCenter(tileNum) {
+            const { row, col } = getTileCoordinates(tileNum);
+            const tileSize = canvas.width / 10;
+            const x = col * tileSize + tileSize / 2;
+            const y = (9 - row) * tileSize + tileSize / 2;
+            return { x, y, tileSize };
+        }
+
+        function drawBoard() {
+            if (!ctx) return;
+            const w = canvas.width;
+            const h = canvas.height;
+            const tileSize = w / 10;
+
+            ctx.clearRect(0, 0, w, h);
+
+            const lightColor = '#fefae0';
+            const darkColor = '#e9edc9';
+
+            for (let tile = 1; tile <= 100; tile++) {
+                const { row, col } = getTileCoordinates(tile);
+                const x = col * tileSize;
+                const y = (9 - row) * tileSize;
+
+                const isEven = (row + col) % 2 === 0;
+                ctx.fillStyle = isEven ? lightColor : darkColor;
+                if (tile === 100) ctx.fillStyle = '#faedcd';
+                if (tile === 1) ctx.fillStyle = '#e8f5e9';
+
+                ctx.fillRect(x, y, tileSize, tileSize);
+
+                ctx.strokeStyle = 'rgba(92, 148, 70, 0.25)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x, y, tileSize, tileSize);
+
+                ctx.fillStyle = '#3a5a40';
+                ctx.font = `bold ${Math.max(10, tileSize * 0.22)}px Fredoka, sans-serif`;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillText(tile, x + 4, y + 4);
+
+                if (tile === 100) {
+                    ctx.font = `${tileSize * 0.4}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('🏰', x + tileSize / 2, y + tileSize / 2 + 4);
+                } else if (tile === 1) {
+                    ctx.font = `${tileSize * 0.35}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('🚪', x + tileSize / 2, y + tileSize / 2 + 4);
+                }
+            }
+
+            for (const [startStr, endStr] of Object.entries(LADDERS)) {
+                drawLadder(parseInt(startStr), parseInt(endStr), tileSize);
+            }
+
+            for (const [headStr, tailStr] of Object.entries(SNAKES)) {
+                drawSnake(parseInt(headStr), parseInt(tailStr), tileSize);
+            }
+
+            drawPlayerTokens(tileSize);
+        }
+
+        function drawLadder(startTile, endTile, tileSize) {
+            const p1 = getTilePixelCenter(startTile);
+            const p2 = getTilePixelCenter(endTile);
+
+            ctx.save();
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const angle = Math.atan2(dy, dx);
+            const distance = Math.hypot(dx, dy);
+
+            const ladderWidth = tileSize * 0.28;
+
+            ctx.translate(p1.x, p1.y);
+            ctx.rotate(angle);
+
+            ctx.strokeStyle = '#6b4226';
+            ctx.lineWidth = Math.max(3, tileSize * 0.07);
+            ctx.lineCap = 'round';
+
+            ctx.beginPath();
+            ctx.moveTo(0, -ladderWidth / 2);
+            ctx.lineTo(distance, -ladderWidth / 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(0, ladderWidth / 2);
+            ctx.lineTo(distance, ladderWidth / 2);
+            ctx.stroke();
+
+            const rungCount = Math.floor(distance / (tileSize * 0.35));
+            ctx.strokeStyle = '#a67c52';
+            ctx.lineWidth = Math.max(2, tileSize * 0.05);
+
+            for (let i = 1; i <= rungCount; i++) {
+                const rx = (distance / (rungCount + 1)) * i;
+                ctx.beginPath();
+                ctx.moveTo(rx, -ladderWidth / 2);
+                ctx.lineTo(rx, ladderWidth / 2);
+                ctx.stroke();
+
+                if (i % 2 === 0) {
+                    ctx.fillStyle = '#52b788';
+                    ctx.beginPath();
+                    ctx.ellipse(rx, -ladderWidth / 2 - 3, 4, 2, Math.PI / 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // Detailed Ghibli Haku River Dragon / Serpent rendering
+        function drawSnake(headTile, tailTile, tileSize) {
+            const pHead = getTilePixelCenter(headTile);
+            const pTail = getTilePixelCenter(tailTile);
+
+            ctx.save();
+
+            const midX = (pHead.x + pTail.x) / 2 + (pHead.y > pTail.y ? 35 : -35);
+            const midY = (pHead.y + pTail.y) / 2 - 15;
+
+            // 1. Dragon Dorsal Green Mane (Background fluff)
+            ctx.strokeStyle = '#2a9d8f';
+            ctx.lineWidth = Math.max(12, tileSize * 0.28);
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(pHead.x, pHead.y);
+            ctx.quadraticCurveTo(midX, midY, pTail.x, pTail.y);
+            ctx.stroke();
+
+            // 2. Main Body (Turquoise White Gradient Dragon Body)
+            const bodyGrad = ctx.createLinearGradient(pHead.x, pHead.y, pTail.x, pTail.y);
+            bodyGrad.addColorStop(0, '#e0f2fe');
+            bodyGrad.addColorStop(0.5, '#b91c1c');
+            bodyGrad.addColorStop(1, '#0284c7');
+
+            ctx.strokeStyle = '#e0f2fe';
+            ctx.lineWidth = Math.max(8, tileSize * 0.2);
+            ctx.stroke();
+
+            // Inner scale highlight
+            ctx.strokeStyle = '#7dd3fc';
+            ctx.lineWidth = Math.max(3, tileSize * 0.08);
+            ctx.stroke();
+
+            // 3. Dragon Belly Stripes
+            const steps = 12;
+            for (let i = 1; i < steps; i++) {
+                const t = i / steps;
+                // Quadratic bezier points calculation
+                const bx = (1 - t) * (1 - t) * pHead.x + 2 * (1 - t) * t * midX + t * t * pTail.x;
+                const by = (1 - t) * (1 - t) * pHead.y + 2 * (1 - t) * t * midY + t * t * pTail.y;
+
+                ctx.fillStyle = '#fef08a';
+                ctx.beginPath();
+                ctx.arc(bx, by, tileSize * 0.06, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 4. Detailed Dragon Head at Head Tile
+            ctx.translate(pHead.x, pHead.y);
+            const angle = Math.atan2(midY - pHead.y, midX - pHead.x);
+            ctx.rotate(angle);
+
+            // Green mane behind head
+            ctx.fillStyle = '#2a9d8f';
+            ctx.beginPath();
+            ctx.ellipse(-4, 0, tileSize * 0.24, tileSize * 0.22, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Dragon head snout shape
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.ellipse(4, 0, tileSize * 0.2, tileSize * 0.15, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Dragon Horns
+            ctx.strokeStyle = '#eab308';
+            ctx.lineWidth = 2.5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-2, -6);
+            ctx.lineTo(-12, -14);
+            ctx.moveTo(-2, 6);
+            ctx.lineTo(-12, 14);
+            ctx.stroke();
+
+            // Dragon Eyes (Ruby Red Ghibli Eye)
+            ctx.fillStyle = '#dc2626';
+            ctx.beginPath();
+            ctx.arc(6, -4, 3.5, 0, Math.PI * 2);
+            ctx.arc(6, 4, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Eye highlight
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(7, -5, 1.2, 0, Math.PI * 2);
+            ctx.arc(7, 3, 1.2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Long Flowing Dragon Whiskers
+            ctx.strokeStyle = '#fef08a';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(10, -2);
+            ctx.quadraticCurveTo(18, -12, 22, -6);
+            ctx.moveTo(10, 2);
+            ctx.quadraticCurveTo(18, 12, 22, 6);
+            ctx.stroke();
+
+            ctx.restore();
+
+            // 5. Fluffy Dragon Tail Tip
+            ctx.save();
+            ctx.translate(pTail.x, pTail.y);
+            ctx.fillStyle = '#2a9d8f';
+            ctx.beginPath();
+            ctx.arc(0, 0, tileSize * 0.14, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fef08a';
+            ctx.beginPath();
+            ctx.arc(0, 0, tileSize * 0.07, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawPlayerTokens(tileSize) {
+            const tileGroups = {};
+            players.forEach(p => {
+                const pos = p.position === 0 ? 1 : p.position;
+                if (!tileGroups[pos]) tileGroups[pos] = [];
+                tileGroups[pos].push(p);
+            });
+
+            for (const [tileNum, pList] of Object.entries(tileGroups)) {
+                const center = getTilePixelCenter(parseInt(tileNum));
+                const count = pList.length;
+
+                pList.forEach((player, idx) => {
+                    let offsetX = 0;
+                    let offsetY = 0;
+                    if (count > 1) {
+                        const radius = tileSize * 0.2;
+                        const angle = (idx / count) * Math.PI * 2;
+                        offsetX = Math.cos(angle) * radius;
+                        offsetY = Math.sin(angle) * radius;
+                    }
+
+                    const px = center.x + offsetX;
+                    const py = center.y + offsetY;
+                    const radius = tileSize * 0.24;
+
+                    // Shadow
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+                    ctx.beginPath();
+                    ctx.ellipse(px, py + radius * 0.8, radius * 0.8, radius * 0.35, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Turn ring aura
+                    if (players[currentPlayerIndex].id === player.id) {
+                        ctx.strokeStyle = '#ff7b54';
+                        ctx.lineWidth = 3.5;
+                        ctx.beginPath();
+                        ctx.arc(px, py, radius + 4, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+
+                    // Render custom Ghibli Character Token Visual
+                    ctx.save();
+                    ctx.translate(px, py);
+
+                    const key = player.avatarKey || 'totoro';
+                    if (key === 'totoro') {
+                        drawTotoroToken(radius);
+                    } else if (key === 'kaonashi') {
+                        drawKaonashiToken(radius);
+                    } else if (key === 'calcifer') {
+                        drawCalciferToken(radius);
+                    } else {
+                        drawKodamaToken(radius);
+                    }
+
+                    ctx.restore();
+                });
+            }
+        }
+
+        // Custom Ghibli Canvas Token Drawings
+        function drawTotoroToken(r) {
+            // Gray Body
+            ctx.fillStyle = '#6c757d';
+            ctx.beginPath();
+            ctx.arc(0, 2, r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Pointed Ears
+            ctx.beginPath();
+            ctx.ellipse(-r * 0.5, -r * 0.9, r * 0.25, r * 0.5, -0.2, 0, Math.PI * 2);
+            ctx.ellipse(r * 0.5, -r * 0.9, r * 0.25, r * 0.5, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // White Belly
+            ctx.fillStyle = '#f8f9fa';
+            ctx.beginPath();
+            ctx.ellipse(0, r * 0.3, r * 0.65, r * 0.55, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Chest Chevrons
+            ctx.strokeStyle = '#6c757d';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(-r * 0.3, r * 0.1); ctx.lineTo(-r * 0.15, 0); ctx.lineTo(0, r * 0.1);
+            ctx.moveTo(0, r * 0.1); ctx.lineTo(r * 0.15, 0); ctx.lineTo(r * 0.3, r * 0.1);
+            ctx.stroke();
+
+            // Eyes
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(-r * 0.35, -r * 0.2, r * 0.2, 0, Math.PI * 2);
+            ctx.arc(r * 0.35, -r * 0.2, r * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(-r * 0.35, -r * 0.2, r * 0.08, 0, Math.PI * 2);
+            ctx.arc(r * 0.35, -r * 0.2, r * 0.08, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawKaonashiToken(r) {
+            // Black Body
+            ctx.fillStyle = '#1e1e24';
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // White Oval Mask
+            ctx.fillStyle = '#f8f9fa';
+            ctx.beginPath();
+            ctx.ellipse(0, -1, r * 0.65, r * 0.8, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Purple Markings
+            ctx.fillStyle = '#7b2cbf';
+            ctx.beginPath();
+            ctx.ellipse(0, -r * 0.5, r * 0.15, r * 0.18, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, r * 0.45, r * 0.15, r * 0.18, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Slit Eyes & Mouth
+            ctx.fillStyle = '#1e1e24';
+            ctx.beginPath();
+            ctx.ellipse(-r * 0.3, -r * 0.15, r * 0.15, r * 0.06, 0, 0, Math.PI * 2);
+            ctx.ellipse(r * 0.3, -r * 0.15, r * 0.15, r * 0.06, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, r * 0.2, r * 0.18, r * 0.05, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawCalciferToken(r) {
+            // Flame Red/Orange Outer
+            ctx.fillStyle = '#f95738';
+            ctx.beginPath();
+            ctx.arc(0, 2, r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Flame Spikes
+            ctx.fillStyle = '#ff70a6';
+            ctx.beginPath();
+            ctx.moveTo(-r * 0.6, -r * 0.3); ctx.lineTo(-r * 0.3, -r * 1.1); ctx.lineTo(0, -r * 0.5);
+            ctx.lineTo(r * 0.3, -r * 1.1); ctx.lineTo(r * 0.6, -r * 0.3);
+            ctx.fill();
+
+            // Yellow Inner Core
+            ctx.fillStyle = '#ffea00';
+            ctx.beginPath();
+            ctx.ellipse(0, r * 0.2, r * 0.6, r * 0.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Eyes
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(-r * 0.25, -r * 0.1, r * 0.18, 0, Math.PI * 2);
+            ctx.arc(r * 0.25, -r * 0.1, r * 0.18, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(-r * 0.25, -r * 0.1, r * 0.08, 0, Math.PI * 2);
+            ctx.arc(r * 0.25, -r * 0.1, r * 0.08, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawKodamaToken(r) {
+            // Light Green/White Head
+            ctx.fillStyle = '#e8f5e9';
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#a7f3d0';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Hollow Eyes
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath();
+            ctx.arc(-r * 0.32, -r * 0.1, r * 0.22, 0, Math.PI * 2);
+            ctx.arc(r * 0.28, -r * 0.12, r * 0.18, 0, Math.PI * 2);
+            ctx.arc(0, r * 0.35, r * 0.12, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        let diceScene, diceCamera, diceRenderer, diceMesh;
+        let diceAnimationId = null;
+
+        function init3DDice() {
+            const container = document.getElementById('dice3dContainer');
+            if (!container) return;
+
+            const width = container.clientWidth || 200;
+            const height = container.clientHeight || 200;
+
+            diceScene = new THREE.Scene();
+            diceCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+            diceCamera.position.set(0, 0, 5); // Camera facing +Z
+
+            diceRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            diceRenderer.setSize(width, height);
+            diceRenderer.shadowMap.enabled = true;
+            container.innerHTML = '';
+            container.appendChild(diceRenderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+            diceScene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfff5e6, 0.8);
+            dirLight.position.set(5, 5, 5);
+            diceScene.add(dirLight);
+
+            // Three.js BoxGeometry Materials order:
+            // [ +X (Right), -X (Left), +Y (Top), -Y (Bottom), +Z (Front), -Z (Back) ]
+            const materials = [
+                createDiceFaceTexture(3), // +X: Face 3
+                createDiceFaceTexture(4), // -X: Face 4
+                createDiceFaceTexture(2), // +Y: Face 2
+                createDiceFaceTexture(5), // -Y: Face 5
+                createDiceFaceTexture(1), // +Z: Face 1 (Frontfacing camera)
+                createDiceFaceTexture(6)  // -Z: Face 6
+            ];
+
+            const geometry = new THREE.BoxGeometry(1.8, 1.8, 1.8);
+            diceMesh = new THREE.Mesh(geometry, materials);
+            diceScene.add(diceMesh);
+
+            diceRenderer.render(diceScene, diceCamera);
+        }
+
+        function createDiceFaceTexture(number) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const c = canvas.getContext('2d');
+
+            c.fillStyle = '#fffdf0';
+            c.fillRect(0, 0, 128, 128);
+
+            c.strokeStyle = '#5c9446';
+            c.lineWidth = 8;
+            c.strokeRect(4, 4, 120, 120);
+
+            c.fillStyle = number === 1 ? '#e63946' : '#2b2d42';
+
+            const dot = (x, y) => {
+                c.beginPath();
+                c.arc(x, y, 11, 0, Math.PI * 2);
+                c.fill();
+            };
+
+            const mid = 64;
+            const left = 36;
+            const right = 92;
+            const top = 36;
+            const bot = 92;
+
+            if (number === 1) {
+                c.fillStyle = '#d90429';
+                c.beginPath();
+                c.arc(mid, mid, 18, 0, Math.PI * 2);
+                c.fill();
+            } else if (number === 2) {
+                dot(left, top);
+                dot(right, bot);
+            } else if (number === 3) {
+                dot(left, top);
+                dot(mid, mid);
+                dot(right, bot);
+            } else if (number === 4) {
+                dot(left, top);
+                dot(right, top);
+                dot(left, bot);
+                dot(right, bot);
+            } else if (number === 5) {
+                dot(left, top);
+                dot(right, top);
+                dot(mid, mid);
+                dot(left, bot);
+                dot(right, bot);
+            } else if (number === 6) {
+                dot(left, top);
+                dot(right, top);
+                dot(left, mid);
+                dot(right, mid);
+                dot(left, bot);
+                dot(right, bot);
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.3 });
+        }
+
+        // Explicit Rotations to align each face towards camera (+Z axis)
+        const faceRotations = {
+            1: { x: 0, y: 0, z: 0 },                        // Front (+Z)
+            2: { x: Math.PI / 2, y: 0, z: 0 },               // Top (+Y)
+            3: { x: 0, y: -Math.PI / 2, z: 0 },              // Right (+X)
+            4: { x: 0, y: Math.PI / 2, z: 0 },               // Left (-X)
+            5: { x: -Math.PI / 2, y: 0, z: 0 },              // Bottom (-Y)
+            6: { x: 0, y: Math.PI, z: 0 }                    // Back (-Z)
+        };
+
+        function rollDice3D(targetNumber, callback) {
+            const modal = document.getElementById('dice3dModal');
+            const box = document.getElementById('dice3dBox');
+            const badge = document.getElementById('diceResultBadge');
+            const numSpan = document.getElementById('dice3dNumber');
+
+            badge.classList.add('opacity-0');
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            box.classList.remove('scale-90');
+            box.classList.add('scale-100');
+
+            playSound('roll');
+
+            const startTime = performance.now();
+            const duration = 1500;
+
+            const initialRotX = diceMesh.rotation.x % (Math.PI * 2);
+            const initialRotY = diceMesh.rotation.y % (Math.PI * 2);
+            const initialRotZ = diceMesh.rotation.z % (Math.PI * 2);
+
+            const targetRot = faceRotations[targetNumber] || faceRotations[1];
+
+            const extraRounds = 4;
+            const endRotX = targetRot.x + Math.PI * 2 * extraRounds;
+            const endRotY = targetRot.y + Math.PI * 2 * extraRounds;
+            const endRotZ = targetRot.z;
+
+            function animateRoll(now) {
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+                diceMesh.rotation.x = initialRotX + (endRotX - initialRotX) * easeProgress;
+                diceMesh.rotation.y = initialRotY + (endRotY - initialRotY) * easeProgress;
+                diceMesh.rotation.z = initialRotZ + (endRotZ - initialRotZ) * easeProgress;
+
+                const bounce = Math.sin(progress * Math.PI * 3) * (1 - progress) * 0.8;
+                diceMesh.position.y = bounce;
+
+                diceRenderer.render(diceScene, diceCamera);
+
+                if (progress < 1) {
+                    diceAnimationId = requestAnimationFrame(animateRoll);
+                } else {
+                    // Exact final snap alignment to prevent precision drift
+                    diceMesh.rotation.x = targetRot.x;
+                    diceMesh.rotation.y = targetRot.y;
+                    diceMesh.rotation.z = targetRot.z;
+                    diceMesh.position.y = 0;
+                    diceRenderer.render(diceScene, diceCamera);
+
+                    numSpan.innerText = targetNumber;
+                    badge.classList.remove('opacity-0');
+                    playSound('step');
+
+                    setTimeout(() => {
+                        modal.classList.add('opacity-0', 'pointer-events-none');
+                        box.classList.remove('scale-100');
+                        box.classList.add('scale-90');
+                        if (callback) callback();
+                    }, 800);
+                }
+            }
+
+            if (diceAnimationId) cancelAnimationFrame(diceAnimationId);
+            diceAnimationId = requestAnimationFrame(animateRoll);
+        }
+
+        function triggerDiceRoll() {
+            if (isRolling || isMoving) return;
+
+            const activePlayer = players[currentPlayerIndex];
+
+            isRolling = true;
+            document.getElementById('btnRollDice').disabled = true;
+
+            const diceValue = Math.floor(Math.random() * 6) + 1;
+            document.getElementById('diceResultBox').innerHTML = `<span class="animate-pulse">${diceValue}</span>`;
+
+            logEvent(`🎲 <b>${activePlayer.name}</b> melempar dadu...`);
+
+            rollDice3D(diceValue, () => {
+                isRolling = false;
+                document.getElementById('btnRollDice').disabled = false;
+                document.getElementById('diceResultBox').innerText = diceValue;
+
+                movePlayerSteps(activePlayer, diceValue);
+            });
+        }
+
+        function movePlayerSteps(player, steps) {
+            isMoving = true;
+            let currentStep = 0;
+
+            const interval = setInterval(() => {
+                if (currentStep < steps) {
+                    if (player.position + 1 <= 100) {
+                        player.position += 1;
+                        playSound('step');
+                        drawBoard();
+                    }
+                    currentStep++;
+                } else {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        checkSpecialTile(player, steps);
+                    }, 300);
+                }
+            }, 250);
+        }
+
+        function checkSpecialTile(player, rolledNumber) {
+            const currentPos = player.position;
+
+            if (LADDERS[currentPos]) {
+                const targetPos = LADDERS[currentPos];
+                logEvent(`🎋 <b>${player.name}</b> memanjat Pohon Tangga dari <b>${currentPos}</b> ke <b>${targetPos}</b>!`);
+                playSound('ladder');
+
+                player.position = targetPos;
+                drawBoard();
+                
+                setTimeout(() => {
+                    finishTurn(player, rolledNumber);
+                }, 400);
+                return;
+            }
+
+            if (SNAKES[currentPos]) {
+                const targetPos = SNAKES[currentPos];
+                logEvent(`🐉 <b>${player.name}</b> bertemu Naga Haku! Meluncur dari <b>${currentPos}</b> ke <b>${targetPos}</b>!`);
+                playSound('snake');
+
+                player.position = targetPos;
+                drawBoard();
+
+                setTimeout(() => {
+                    finishTurn(player, rolledNumber);
+                }, 400);
+                return;
+            }
+
+            finishTurn(player, rolledNumber);
+        }
+
+        function finishTurn(player, rolledNumber) {
+            isMoving = false;
+
+            if (player.position === 100) {
+                handleWin(player);
+                return;
+            }
+
+            if (rolledNumber === 6) {
+                logEvent(`✨ <b>${player.name}</b> mendapat angka 6 dan melempar dadu sekali lagi!`);
+                updateUI();
+                if (player.isAI) {
+                    setTimeout(triggerDiceRoll, 1000);
+                }
+                return;
+            }
+
+            currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+            updateUI();
+
+            const nextPlayer = players[currentPlayerIndex];
+            if (nextPlayer.isAI) {
+                logEvent(`🤖 Giliran Bot <b>${nextPlayer.name}</b>...`);
+                setTimeout(triggerDiceRoll, 1200);
+            }
+        }
+
+        function handleWin(winner) {
+            playSound('win');
+            logEvent(`🏆 <b>${winner.name}</b> MENANG! Selamat menjadi Penguasa Hutan Ghibli!`);
+
+            document.getElementById('winAvatar').innerText = winner.avatarData.icon;
+            document.getElementById('winPlayerName').innerText = winner.name;
+
+            const modal = document.getElementById('winnerModal');
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            modal.children[0].classList.remove('scale-90');
+            modal.children[0].classList.add('scale-100');
+        }
+
+        function updateUI() {
+            const activePlayer = players[currentPlayerIndex];
+
+            const statusText = document.getElementById('statusText');
+            const statusDot = document.getElementById('statusDot');
+            statusText.innerText = `Giliran: ${activePlayer.name}`;
+            statusDot.style.backgroundColor = activePlayer.avatarData.border;
+
+            const container = document.getElementById('playersList');
+            container.innerHTML = '';
+
+            players.forEach((p, idx) => {
+                const isActive = idx === currentPlayerIndex;
+                const card = document.createElement('div');
+                card.className = `p-2.5 rounded-2xl flex items-center justify-between border-2 transition-all ${
+                    isActive ? 'bg-white active-turn-card' : 'bg-white/60 border-slate-200'
+                }`;
+
+                card.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-9 h-9 rounded-full flex items-center justify-center text-lg border-2 shadow-sm" style="background-color: ${p.avatarData.bg}; border-color: ${p.avatarData.border}">
+                            ${p.avatarData.icon}
+                        </div>
+                        <div>
+                            <div class="font-fredoka text-sm text-slate-800 leading-tight font-semibold flex items-center gap-1.5">
+                                ${p.name}
+                                ${p.isAI ? '<span class="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded">BOT</span>' : ''}
+                            </div>
+                            <div class="text-xs text-slate-500 font-semibold">Petak: <span class="text-emerald-700 font-bold">${p.position}</span> / 100</div>
+                        </div>
+                    </div>
+                    ${isActive ? '<span class="text-amber-500 text-xs font-bold font-fredoka animate-pulse">GILIRAN</span>' : ''}
+                `;
+                container.appendChild(card);
+            });
+
+            const btnRoll = document.getElementById('btnRollDice');
+            const rollHint = document.getElementById('rollHint');
+
+            if (activePlayer.isAI) {
+                btnRoll.disabled = true;
+                btnRoll.classList.add('opacity-70', 'cursor-not-allowed');
+                rollHint.innerText = `Bot ${activePlayer.name} sedang berpikir...`;
+            } else {
+                btnRoll.disabled = false;
+                btnRoll.classList.remove('opacity-70', 'cursor-not-allowed');
+                rollHint.innerText = `${activePlayer.name}, klik tombol untuk melempar dadu!`;
+            }
+
+            drawBoard();
+        }
+
+        function logEvent(msg) {
+            const logBox = document.getElementById('gameLog');
+            const p = document.createElement('p');
+            p.innerHTML = msg;
+            logBox.appendChild(p);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function openSetupModal() {
+            document.getElementById('setupModal').classList.remove('opacity-0', 'pointer-events-none');
+            renderCharacterPickers();
+        }
+
+        function closeSetupModal() {
+            document.getElementById('setupModal').classList.add('opacity-0', 'pointer-events-none');
+        }
+
+        function openRulesModal() {
+            document.getElementById('rulesModal').classList.remove('opacity-0', 'pointer-events-none');
+        }
+
+        function closeRulesModal() {
+            document.getElementById('rulesModal').classList.add('opacity-0', 'pointer-events-none');
+        }
+
+        function setSelectMode(mode) {
+            selectedMode = mode;
+            const btnAI = document.getElementById('btnModeAI');
+            const btnPVP = document.getElementById('btnModePVP');
+            const pvpCountSection = document.getElementById('pvpCountSection');
+
+            if (mode === 'ai') {
+                btnAI.className = 'p-3 rounded-2xl border-2 border-emerald-500 bg-emerald-100/80 font-fredoka text-emerald-900 text-sm flex flex-col items-center gap-1 shadow-sm';
+                btnPVP.className = 'p-3 rounded-2xl border-2 border-slate-300 bg-white font-fredoka text-slate-700 text-sm flex flex-col items-center gap-1 shadow-sm';
+                pvpCountSection.classList.add('hidden');
+            } else {
+                btnPVP.className = 'p-3 rounded-2xl border-2 border-emerald-500 bg-emerald-100/80 font-fredoka text-emerald-900 text-sm flex flex-col items-center gap-1 shadow-sm';
+                btnAI.className = 'p-3 rounded-2xl border-2 border-slate-300 bg-white font-fredoka text-slate-700 text-sm flex flex-col items-center gap-1 shadow-sm';
+                pvpCountSection.classList.remove('hidden');
+            }
+            renderCharacterPickers();
+        }
+
+        function renderCharacterPickers() {
+            const list = document.getElementById('characterPickerList');
+            list.innerHTML = '';
+
+            const count = selectedMode === 'ai' ? 2 : parseInt(document.getElementById('selectPlayerCount').value);
+            const keys = Object.keys(AVATARS);
+
+            for (let i = 0; i < count; i++) {
+                const isAI = selectedMode === 'ai' && i === 1;
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between bg-white p-2 rounded-xl border border-amber-200';
+
+                div.innerHTML = `
+                    <span class="text-xs font-bold text-slate-700">${isAI ? 'Bot AI' : 'Pemain ' + (i + 1)}</span>
+                    <select onchange="selectedAvatars[${i}] = this.value" class="p-1.5 rounded-lg border border-amber-300 bg-amber-50 text-xs font-bold">
+                        ${keys.map((k, idx) => `<option value="${k}" ${idx === i ? 'selected' : ''}>${AVATARS[k].icon} ${AVATARS[k].name}</option>`).join('')}
+                    </select>
+                `;
+                list.appendChild(div);
+            }
+        }
+
+        function applySetupAndRestart() {
+            gameMode = selectedMode;
+            closeSetupModal();
+
+            players = [];
+            if (gameMode === 'ai') {
+                document.getElementById('currentModeLabel').innerText = '1 Pemain vs Bot AI';
+                players.push({
+                    id: 1,
+                    name: AVATARS[selectedAvatars[0]].name,
+                    avatarKey: selectedAvatars[0],
+                    avatarData: AVATARS[selectedAvatars[0]],
+                    position: 0,
+                    isAI: false
+                });
+                players.push({
+                    id: 2,
+                    name: 'Bot ' + AVATARS[selectedAvatars[1]].name,
+                    avatarKey: selectedAvatars[1],
+                    avatarData: AVATARS[selectedAvatars[1]],
+                    position: 0,
+                    isAI: true
+                });
+            } else {
+                const count = parseInt(document.getElementById('selectPlayerCount').value);
+                document.getElementById('currentModeLabel').innerText = `${count} Pemain Lokal`;
+                for (let i = 0; i < count; i++) {
+                    players.push({
+                        id: i + 1,
+                        name: `${AVATARS[selectedAvatars[i]].name}`,
+                        avatarKey: selectedAvatars[i],
+                        avatarData: AVATARS[selectedAvatars[i]],
+                        position: 0,
+                        isAI: false
+                    });
+                }
+            }
+
+            restartGame();
+        }
+
+        function resetGamePrompt() {
+            if (confirm("Apakah kamu yakin ingin mengulang permainan dari awal?")) {
+                restartGame();
+            }
+        }
+
+        function restartGame() {
+            document.getElementById('winnerModal').classList.add('opacity-0', 'pointer-events-none');
+            currentPlayerIndex = 0;
+            isRolling = false;
+            isMoving = false;
+
+            players.forEach(p => p.position = 0);
+
+            document.getElementById('gameLog').innerHTML = `
+                <p class="text-emerald-400">✨ Permainan baru dimulai!</p>
+                <p class="text-slate-300">Semoga beruntung di Hutan Ghibli!</p>
+            `;
+
+            updateUI();
+        }
+
+        function createFloatingLeaves() {
+            const container = document.getElementById('leavesContainer');
+            if (!container) return;
+            const icons = ['🍃', '🌸', '🌱', '✨'];
+
+            for (let i = 0; i < 15; i++) {
+                const leaf = document.createElement('div');
+                leaf.className = 'leaf-particle';
+                leaf.innerText = icons[Math.floor(Math.random() * icons.length)];
+                leaf.style.left = Math.random() * 100 + 'vw';
+                leaf.style.animationDuration = (6 + Math.random() * 6) + 's';
+                leaf.style.animationDelay = (Math.random() * 5) + 's';
+                leaf.style.fontSize = (14 + Math.random() * 14) + 'px';
+                container.appendChild(leaf);
+            }
+        }
+
+        window.onload = function() {
+            initCanvas();
+            init3DDice();
+            createFloatingLeaves();
+
+            // Default Startup: 2 Human Players (Human vs Human) with Ghibli Characters
+            gameMode = 'pvp';
+            players = [
+                { id: 1, name: 'Totoro', avatarKey: 'totoro', avatarData: AVATARS.totoro, position: 0, isAI: false },
+                { id: 2, name: 'Tanpa Muka', avatarKey: 'kaonashi', avatarData: AVATARS.kaonashi, position: 0, isAI: false }
+            ];
+
+            updateUI();
+        };
+    </script>
+</body>
+</html>
